@@ -17,8 +17,8 @@ const authPassword = ref('');
 const authError = ref('');
 const authLoading = ref(false);
 
-const API_URL = 'http://localhost:5000/api/todos';
-const AUTH_URL = 'http://localhost:5000/api';
+const API_URL = '/api/todos';
+const AUTH_URL = '/api';
 
 // === State Profil User ===
 const displayName = ref('');
