@@ -130,6 +130,7 @@ app.post('/api/categories', async (req, res) => {
 // ==========================================
 
 // GET: Ambil Todos dengan Relasi Lengkap, Filter, Search, dan Sorting
+// GET: Ambil Todos dengan Relasi Lengkap, Filter, Search, dan Sorting
 app.get('/api/todos', async (req, res) => {
   const {
     user_id,
@@ -151,13 +152,19 @@ app.get('/api/todos', async (req, res) => {
         subtasks(*),
         todo_attachments(*)
       `)
-      .eq('user_id', user_id)
-      .eq('is_archived', is_archived === 'true');
+      .eq('user_id', user_id);
+
+    // Menangani NULL dan FALSE untuk data lama
+    if (is_archived === 'true') {
+      query = query.eq('is_archived', true);
+    } else {
+      query = query.or('is_archived.eq.false,is_archived.is.null');
+    }
 
     // Filter Kategori
     if (category_id) query = query.eq('category_id', category_id);
 
-    // Filter Prioritas (low, medium, high)
+    // Filter Prioritas
     if (priority) query = query.eq('priority', priority);
 
     // Filter Status Selesai
@@ -165,20 +172,25 @@ app.get('/api/todos', async (req, res) => {
       query = query.eq('is_completed', is_completed === 'true');
     }
 
-    // Pencarian Realtime (title atau description)
+    // Pencarian
     if (search) {
       query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
     }
 
-    // Sorting (due_date / created_at / priority)
+    // Sorting (Fallback ke ID jika created_at null)
     const isAscending = order === 'asc';
-    query = query.order(sort_by, { ascending: isAscending, nullsFirst: false });
+    const sortField = sort_by || 'id';
+    query = query.order(sortField, { ascending: isAscending, nullsFirst: false });
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase Query Error:', error);
+      throw error;
+    }
 
-    res.status(200).json(data);
+    res.status(200).json(data || []);
   } catch (err) {
+    console.error('Error in /api/todos:', err);
     res.status(500).json({ error: err.message });
   }
 });
