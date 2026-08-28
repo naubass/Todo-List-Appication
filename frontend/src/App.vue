@@ -821,66 +821,317 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* CSS Tambahan untuk Grid Analitik, Card, Alert, dan Progress Bar */
+/* ==========================================
+   LAYOUT DASAR — dibuat lebih lebar & lega
+   ========================================== */
+.todo-app-container {
+  max-width: 1100px;
+  width: 92%;
+  margin: 40px auto;
+  padding: 32px 40px 48px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(30, 41, 59, 0.12);
+  box-sizing: border-box;
+}
+
+.todo-app-container h1 {
+  text-align: center;
+  font-size: 1.6rem;
+  margin: 8px 0 28px;
+  color: #1e293b;
+}
+
+/* ==========================================
+   AUTH WRAPPER
+   ========================================== */
+.auth-wrapper {
+  max-width: 420px;
+  margin: 20px auto;
+  padding: 28px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.auth-tabs button {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.auth-tabs button.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+.auth-wrapper form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.auth-wrapper input {
+  padding: 11px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+.auth-wrapper input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.auth-wrapper button[type="submit"] {
+  padding: 12px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.auth-wrapper button[type="submit"]:hover {
+  background: #1d4ed8;
+}
+.auth-wrapper button[type="submit"]:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+.auth-error {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #dc2626;
+}
+
+/* ==========================================
+   USER BAR
+   ========================================== */
+.user-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  background: #f1f5f9;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  font-weight: 600;
+  color: #334155;
+}
+.btn-logout {
+  padding: 8px 16px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+  transition: all 0.15s;
+}
+.btn-logout:hover {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #dc2626;
+}
+
+/* ==========================================
+   PROFILE SECTION
+   ========================================== */
+.profile-section {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.avatar-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.pixel-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid #e5e7eb;
+  background: #fff;
+  object-fit: cover;
+}
+.custom-file-upload {
+  font-size: 0.75rem;
+  color: #2563eb;
+  cursor: pointer;
+}
+.custom-file-upload input {
+  display: none;
+}
+.profile-input {
+  flex: 1;
+  min-width: 220px;
+  padding: 11px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+.btn-save {
+  padding: 11px 22px;
+  background: #10b981;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.btn-save:hover {
+  background: #059669;
+}
+
+/* ==========================================
+   ANALYTICS GRID
+   ========================================== */
 .analytics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
-  margin: 15px 0;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  margin: 20px 0 28px;
 }
 .stat-card {
-  background: #f3f4f6;
-  padding: 12px;
-  border-radius: 8px;
+  background: #f8fafc;
+  padding: 18px 12px;
+  border-radius: 10px;
   text-align: center;
   border: 1px solid #e5e7eb;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(30, 41, 59, 0.08);
 }
 .stat-num {
   display: block;
-  font-size: 1.4rem;
-  font-weight: bold;
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+.stat-label {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 600;
 }
 .stat-card.danger.alert {
   background: #fee2e2;
   border-color: #ef4444;
+}
+.stat-card.danger.alert .stat-num {
   color: #991b1b;
 }
 .stat-card.warning {
   background: #fef3c7;
   border-color: #f59e0b;
 }
+.stat-card.warning .stat-num {
+  color: #92400e;
+}
+
+/* ==========================================
+   FORM TAMBAH TODO
+   ========================================== */
 .todo-form {
-  background: #ffffff;
-  padding: 15px;
-  border-radius: 8px;
+  background: #f8fafc;
+  padding: 22px;
+  border-radius: 12px;
   border: 1px solid #e5e7eb;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 .form-row {
   display: flex;
-  gap: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.input-title { flex: 2; }
+.form-row > * {
+  flex: 1;
+  min-width: 160px;
+}
+.input-title { flex: 2; min-width: 240px; }
+.select-priority { flex: 1; }
+
+.todo-form input,
+.todo-form select,
+.todo-form textarea {
+  padding: 11px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: #fff;
+  box-sizing: border-box;
+}
+.todo-form input:focus,
+.todo-form select:focus,
+.todo-form textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
 .input-desc { width: 100%; resize: vertical; }
+
+.btn-add {
+  flex: 1;
+  min-width: 160px;
+  padding: 12px 20px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-add:hover {
+  background: #1d4ed8;
+}
+
+/* ==========================================
+   FILTER TOOLBAR
+   ========================================== */
 .filter-toolbar {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 15px;
+  gap: 14px;
+  margin-bottom: 22px;
 }
 .tab-switch {
   display: flex;
-  gap: 5px;
+  gap: 8px;
 }
 .tab-switch button {
-  padding: 6px 14px;
+  padding: 10px 20px;
   border: 1px solid #d1d5db;
   background: #f9fafb;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 8px;
+  font-weight: 600;
+  color: #475569;
+  transition: all 0.15s;
 }
 .tab-switch button.active {
   background: #2563eb;
@@ -890,21 +1141,56 @@ onMounted(() => {
 .filter-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
+.filter-controls input,
+.filter-controls select {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #fff;
+}
+.search-input {
+  flex: 2;
+  min-width: 220px;
+}
+.filter-controls select {
+  flex: 1;
+  min-width: 150px;
+}
+
+.loading-text,
+.empty-text {
+  text-align: center;
+  padding: 40px 0;
+  color: #94a3b8;
+  font-size: 1rem;
+}
+
+/* ==========================================
+   DAFTAR TODO
+   ========================================== */
 .todo-list {
   list-style: none;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .todo-card {
   background: white;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 12px;
-  transition: all 0.2s;
+  border-radius: 12px;
+  padding: 18px 20px;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.todo-card:hover {
+  box-shadow: 0 8px 20px rgba(30, 41, 59, 0.08);
+}
+.todo-card.completed {
+  background: #f9fafb;
+  opacity: 0.8;
 }
 .todo-card.status-overdue {
   border-left: 5px solid #ef4444;
@@ -916,12 +1202,27 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.todo-content {
+  flex: 1;
+  min-width: 220px;
 }
 .todo-header-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
+}
+.todo-check-icon {
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+.todo-title-text {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1e293b;
 }
 .strikethrough {
   text-decoration: line-through;
@@ -929,9 +1230,10 @@ onMounted(() => {
 }
 .badge-priority {
   font-size: 0.75rem;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: bold;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 .priority-high { background: #fee2e2; color: #dc2626; }
 .priority-medium { background: #fef3c7; color: #d97706; }
@@ -939,57 +1241,255 @@ onMounted(() => {
 .badge-category {
   color: white;
   font-size: 0.75rem;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.todo-desc-text {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+.due-date-row {
+  margin-top: 8px;
+}
+.badge-due {
+  font-size: 0.82rem;
+  color: #64748b;
 }
 .badge-due.overdue {
   color: #dc2626;
-  font-weight: bold;
+  font-weight: 700;
 }
 .badge-due.due-soon {
   color: #d97706;
-  font-weight: bold;
+  font-weight: 700;
+}
+
+/* Aksi Todo */
+.todo-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.todo-actions button {
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-edit:hover { background: #dbeafe; border-color: #93c5fd; }
+.btn-archive:hover { background: #fef3c7; border-color: #fbbf24; }
+.btn-delete:hover { background: #fee2e2; border-color: #fca5a5; }
+
+/* Edit Mode */
+.edit-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.edit-input,
+.edit-textarea {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+.edit-actions {
+  display: flex;
+  gap: 8px;
+}
+.edit-actions .btn-save {
+  padding: 9px 18px;
+}
+.btn-cancel {
+  padding: 9px 18px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* ==========================================
+   SUBTASKS
+   ========================================== */
+.subtasks-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #e5e7eb;
 }
 .progress-bar-container {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 8px 0;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 .progress-bar-track {
   flex: 1;
   background: #e5e7eb;
-  height: 6px;
-  border-radius: 3px;
+  height: 7px;
+  border-radius: 4px;
   overflow: hidden;
 }
 .progress-bar-fill {
   background: #10b981;
   height: 100%;
+  transition: width 0.3s;
 }
-.progress-text { font-size: 0.75rem; color: #6b7280; }
+.progress-text {
+  font-size: 0.78rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+.subtask-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
 .subtask-item {
   display: flex;
   align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: #334155;
+}
+.subtask-item span.completed {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+.btn-sub-del {
+  border: none;
+  background: none;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 1rem;
+  margin-left: auto;
+  padding: 0 6px;
+}
+.btn-sub-del:hover { color: #ef4444; }
+
+.add-subtask-box {
+  display: flex;
+  gap: 8px;
+}
+.add-subtask-box input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.88rem;
+}
+.btn-add-sub {
+  padding: 8px 16px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  color: #4338ca;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-add-sub:hover { background: #e0e7ff; }
+
+/* ==========================================
+   ATTACHMENTS
+   ========================================== */
+.attachments-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e7eb;
+}
+.attachments-list {
+  margin-bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  font-size: 0.85rem;
 }
 .btn-upload-file {
   display: inline-block;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   color: #2563eb;
   cursor: pointer;
-  margin-top: 6px;
+  font-weight: 600;
 }
 .btn-upload-file input { display: none; }
 .attachment-chip {
   display: inline-block;
   background: #e0f2fe;
   color: #0369a1;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
   text-decoration: none;
-  margin-right: 5px;
+  transition: background 0.15s;
+}
+.attachment-chip:hover { background: #bae6fd; }
+
+/* ==========================================
+   PAGINATION
+   ========================================== */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 28px;
+  flex-wrap: wrap;
+}
+.btn-page {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+  transition: all 0.15s;
+}
+.btn-page:hover:not(:disabled) {
+  background: #eef2ff;
+  border-color: #93c5fd;
+}
+.btn-page.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+.btn-page:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ==========================================
+   RESPONSIVE
+   ========================================== */
+@media (max-width: 720px) {
+  .todo-app-container {
+    width: 94%;
+    padding: 22px 18px 32px;
+    margin: 16px auto;
+  }
+  .todo-main {
+    flex-direction: column;
+  }
+  .todo-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .form-row > * {
+    min-width: 100%;
+  }
 }
 </style>
