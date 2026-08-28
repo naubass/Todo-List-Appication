@@ -13,6 +13,68 @@ app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
 // ==========================================
+// 0. ENDPOINT AUTENTIKASI (AUTH)
+// ==========================================
+
+// POST: Registrasi user baru
+app.post('/api/register', async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
+    res.status(201).json({ user: data.user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST: Login user
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    res.status(200).json({ user: data.user, session: data.session });
+  } catch (err) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
+// POST: Logout user
+app.post('/api/logout', async (req, res) => {
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    res.status(200).json({ message: 'Logout berhasil' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT: Update profil (nama tampilan & avatar)
+app.put('/api/profile', async (req, res) => {
+  const { user_id, display_name, avatar_base64 } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'user_id wajib diisi' });
+  }
+
+  try {
+    const { data, error } = await supabase.auth.admin.updateUserById(user_id, {
+      user_metadata: {
+        display_name,
+        avatar_url: avatar_base64 || undefined,
+      },
+    });
+
+    if (error) throw error;
+    res.status(200).json({ user: data.user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
 // 1. ENDPOINT KATEGORI (CATEGORIES)
 // ==========================================
 
@@ -334,6 +396,13 @@ app.get('/api/analytics/summary', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ==========================================
+// 404 HANDLER (agar selalu return JSON, bukan HTML)
+// ==========================================
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: `Endpoint tidak ditemukan: ${req.method} ${req.originalUrl}` });
 });
 
 app.listen(PORT, () => {
