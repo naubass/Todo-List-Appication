@@ -130,24 +130,55 @@ app.post('/api/categories', async (req, res) => {
 // ==========================================
 
 // GET: Ambil Todos dengan Relasi Lengkap, Filter, Search, dan Sorting
-// backend/index.js
 app.get('/api/todos', async (req, res) => {
-  const { user_id } = req.query;
-  try {
-    const { data, error } = await supabase
-      .from('todos')
-      .select('*')
-      .eq('user_id', user_id)
-      .order('id', { ascending: false });
+  const {
+    user_id,
+    category_id,
+    priority,
+    is_completed,
+    is_archived = 'false',
+    search,
+    sort_by = 'created_at',
+    order = 'desc',
+  } = req.query;
 
-    if (error) {
-      console.error('SUPABASE_ERROR:', error);
-      return res.status(500).json({ error: error.message, details: error });
+  try {
+    let query = supabase
+      .from('todos')
+      .select(`
+        *,
+        categories(id, name, color_hex),
+        subtasks(*),
+        todo_attachments(*)
+      `)
+      .eq('user_id', user_id)
+      .eq('is_archived', is_archived === 'true');
+
+    // Filter Kategori
+    if (category_id) query = query.eq('category_id', category_id);
+
+    // Filter Prioritas (low, medium, high)
+    if (priority) query = query.eq('priority', priority);
+
+    // Filter Status Selesai
+    if (is_completed !== undefined) {
+      query = query.eq('is_completed', is_completed === 'true');
     }
 
-    res.status(200).json(data || []);
+    // Pencarian Realtime (title atau description)
+    if (search) {
+      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
+    }
+
+    // Sorting (due_date / created_at / priority)
+    const isAscending = order === 'asc';
+    query = query.order(sort_by, { ascending: isAscending, nullsFirst: false });
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    res.status(200).json(data);
   } catch (err) {
-    console.error('SERVER_ERROR:', err);
     res.status(500).json({ error: err.message });
   }
 });

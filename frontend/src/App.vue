@@ -1,10 +1,10 @@
 <script setup>
-import { ref, onMounted, computed, watch, nextTick } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 
 // === State Utama Todos & Kategori ===
 const todos = ref([]);
 const categories = ref([]);
-const loading = ref(false);
+const loading = ref(true);
 
 // State Form Tambah Todo Baru
 const inputTitle = ref('');
@@ -18,7 +18,7 @@ const currentTab = ref('active'); // 'active' | 'archived'
 const searchQuery = ref('');
 const filterCategoryId = ref('');
 const filterPriority = ref('');
-const filterStatus = ref('');
+const filterStatus = ref(''); // '' (semua) | 'completed' | 'pending'
 const sortBy = ref('created_at');
 const sortOrder = ref('desc');
 
@@ -33,14 +33,14 @@ const stats = ref({
 });
 
 // State Subtask Baru & Input Edit Todo
-const newSubtaskTitles = ref({});
+const newSubtaskTitles = ref({}); // { [todoId]: 'judul subtask' }
 const editingId = ref(null);
 const editingTitle = ref('');
 const editingDescription = ref('');
 
 // === State Autentikasi ===
 const user = ref(null);
-const authView = ref('login');
+const authView = ref('login'); // 'login' | 'register'
 const authEmail = ref('');
 const authPassword = ref('');
 const authError = ref('');
@@ -98,52 +98,37 @@ const handleSaveProfile = async () => {
   }
 };
 
-// Reset Filter saat ganti user / login baru
-const resetFilters = () => {
-  searchQuery.value = '';
-  filterCategoryId.value = '';
-  filterPriority.value = '';
-  filterStatus.value = '';
-  sortBy.value = 'created_at';
-  sortOrder.value = 'desc';
-  currentTab.value = 'active';
-};
-
-// === API Fetch Data (Menerima userId eksplisit) ===
-const fetchCategories = async (customUserId = null) => {
-  const uid = customUserId || user.value?.id;
-  if (!uid) return;
+// === API Fetch Data Todos, Kategori & Statistik ===
+const fetchCategories = async () => {
+  if (!user.value) return;
   try {
-    const res = await fetch(`/api/categories?user_id=${uid}`);
+    const res = await fetch(`/api/categories?user_id=${user.value.id}`);
     const data = await res.json();
-    if (res.ok && Array.isArray(data)) categories.value = data;
+    if (res.ok) categories.value = data;
   } catch (err) {
     console.error('Gagal mengambil kategori', err);
   }
 };
 
-const fetchAnalytics = async (customUserId = null) => {
-  const uid = customUserId || user.value?.id;
-  if (!uid) return;
+const fetchAnalytics = async () => {
+  if (!user.value) return;
   try {
-    const res = await fetch(`/api/analytics/summary?user_id=${uid}`);
+    const res = await fetch(`/api/analytics/summary?user_id=${user.value.id}`);
     const data = await res.json();
-    if (res.ok && data) stats.value = data;
+    if (res.ok) stats.value = data;
   } catch (err) {
     console.error('Gagal mengambil ringkasan statistik', err);
   }
 };
 
-const fetchTodos = async (customUserId = null) => {
-  const uid = customUserId || user.value?.id;
-  if (!uid) return;
-
+const fetchTodos = async () => {
+  if (!user.value) return;
   loading.value = true;
   currentPage.value = 1;
 
   try {
     const params = new URLSearchParams({
-      user_id: uid,
+      user_id: user.value.id,
       is_archived: currentTab.value === 'archived' ? 'true' : 'false',
       sort_by: sortBy.value,
       order: sortOrder.value,
@@ -157,9 +142,7 @@ const fetchTodos = async (customUserId = null) => {
 
     const res = await fetch(`${API_URL}?${params.toString()}`);
     const data = await res.json();
-    if (res.ok && Array.isArray(data)) {
-      todos.value = data;
-    }
+    if (res.ok) todos.value = data;
   } catch (err) {
     console.error('Gagal mengambil data todos', err);
   } finally {
@@ -167,27 +150,9 @@ const fetchTodos = async (customUserId = null) => {
   }
 };
 
-// Pipeline pemuatan data teratur
-const loadAllUserData = async (userData) => {
-  if (!userData?.id) return;
-  user.value = userData;
-  setProfileData(userData);
-  resetFilters();
-
-  // Tunggu DOM dashboard selesai ter-render
-  await nextTick();
-
-  // Muat data secara berurutan
-  await fetchCategories(userData.id);
-  await fetchTodos(userData.id);
-  fetchAnalytics(userData.id);
-};
-
-// Watcher untuk filter dan sorting
+// Watcher untuk re-fetch otomatis saat filter/tab berubah
 watch([currentTab, filterCategoryId, filterPriority, filterStatus, sortBy, sortOrder], () => {
-  if (user.value?.id) {
-    fetchTodos();
-  }
+  fetchTodos();
 });
 
 // === Auth Functions ===
@@ -225,14 +190,14 @@ const handleLogin = async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Login gagal');
 
-    const loggedInUser = data.user;
-    localStorage.setItem('todo_user', JSON.stringify(loggedInUser));
+    user.value = data.user;
+    localStorage.setItem('todo_user', JSON.stringify(user.value));
+    setProfileData(data.user);
 
     authEmail.value = '';
     authPassword.value = '';
-
-    // Muat data secara stabil
-    await loadAllUserData(loggedInUser);
+    
+    await Promise.all([fetchCategories(), fetchTodos(), fetchAnalytics()]);
   } catch (err) {
     authError.value = err.message;
   } finally {
@@ -258,7 +223,7 @@ const handleLogout = async () => {
 
 // === CRUD Todos ===
 const handleSubmit = async () => {
-  if (!inputTitle.value.trim() || !user.value) return;
+  if (!inputTitle.value.trim()) return;
 
   try {
     const payload = {
@@ -375,7 +340,7 @@ const handleDelete = async (id) => {
   }
 };
 
-// === CRUD Subtasks ===
+// === CRUD Subtasks / Checklist ===
 const handleAddSubtask = async (todoId) => {
   const title = newSubtaskTitles.value[todoId]?.trim();
   if (!title) return;
@@ -422,7 +387,7 @@ const deleteSubtask = async (subtaskId) => {
   }
 };
 
-// === Upload Lampiran ===
+// === Upload Lampiran Berkas Todo ===
 const handleAttachmentUpload = async (event, todoId) => {
   const file = event.target.files[0];
   if (!file) return;
@@ -453,15 +418,15 @@ const handleAttachmentUpload = async (event, todoId) => {
   reader.readAsDataURL(file);
 };
 
-// === Helper Functions ===
+// === Helper Functions (Due Date Alert & Progress) ===
 const getDueDateStatus = (dueDateStr, isCompleted) => {
   if (!dueDateStr || isCompleted) return 'normal';
   const dueDate = new Date(dueDateStr);
   const now = new Date();
   const diffHours = (dueDate - now) / (1000 * 60 * 60);
 
-  if (diffHours < 0) return 'overdue';
-  if (diffHours <= 24) return 'due-soon';
+  if (diffHours < 0) return 'overdue'; // Warna Merah
+  if (diffHours <= 24) return 'due-soon'; // Warna Kuning/Oranye
   return 'normal';
 };
 
@@ -520,8 +485,13 @@ const visiblePageNumbers = computed(() => {
 onMounted(() => {
   const saved = localStorage.getItem('todo_user');
   if (saved) {
-    const parsedUser = JSON.parse(saved);
-    loadAllUserData(parsedUser);
+    user.value = JSON.parse(saved);
+    setProfileData(user.value);
+    fetchCategories();
+    fetchTodos();
+    fetchAnalytics();
+  } else {
+    loading.value = false;
   }
 });
 </script>
