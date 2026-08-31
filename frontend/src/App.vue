@@ -128,8 +128,6 @@ const fetchTodos = async () => {
   loading.value = true;
   currentPage.value = 1;
 
-  const thisRequestId = ++todosRequestId;
-
   try {
     const params = new URLSearchParams({
       user_id: user.value.id,
@@ -144,15 +142,13 @@ const fetchTodos = async () => {
     if (filterStatus.value === 'pending') params.append('is_completed', 'false');
     if (searchQuery.value.trim()) params.append('search', searchQuery.value.trim());
 
-    const res = await fetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
-    if (thisRequestId !== todosRequestId) return; // ada request lain yang lebih baru
-
-    if (!res.ok) throw new Error(`Gagal ambil todos (status ${res.status})`);
-    todos.value = await res.json();
+    const res = await fetch(`${API_URL}?${params.toString()}`);
+    const data = await res.json();
+    if (res.ok) todos.value = data;
   } catch (err) {
     console.error('Gagal mengambil data todos', err);
   } finally {
-    if (thisRequestId === todosRequestId) loading.value = false;
+    loading.value = false;
   }
 };
 
@@ -190,7 +186,6 @@ const handleLogin = async () => {
   try {
     const res = await fetch(`${AUTH_URL}/login`, {
       method: 'POST',
-      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: authEmail.value, password: authPassword.value }),
     });
@@ -203,13 +198,8 @@ const handleLogin = async () => {
 
     authEmail.value = '';
     authPassword.value = '';
-
-    // Jalankan berurutan (bukan Promise.all) supaya kalau ada request
-    // yang gagal karena backend masih "cold", masih tersisa retry di sini,
-    // dan tidak semuanya ambruk bersamaan pada percobaan pertama.
-    await fetchCategories();
-    await fetchTodosWithRetry();
-    await fetchAnalytics();
+    
+    await Promise.all([fetchCategories(), fetchTodos(), fetchAnalytics()]);
   } catch (err) {
     authError.value = err.message;
   } finally {
