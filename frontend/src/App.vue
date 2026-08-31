@@ -297,11 +297,10 @@ onMounted(() => {
       <div class="navbar-inner">
         <div class="brand" @click="scrollToId('top')">
           <span class="brand-sprite"></span>
-          <span class="brand-text">TUGAS<span class="brand-accent">.PIXEL</span></span>
+          <span class="brand-text">NekoTask<span class="brand-accent">.io</span></span>
         </div>
 
         <nav class="nav-links">
-          <button class="nav-link" @click="scrollToId('top')">Beranda</button>
           <button v-if="user" class="nav-link" @click="scrollToId('board')">Papan Tugas</button>
           <button v-if="user" class="nav-link" @click="scrollToId('profile')">Profil</button>
         </nav>
@@ -474,7 +473,7 @@ onMounted(() => {
     </template>
 
     <footer class="footer">
-      <p>made with 🧡 &amp; pixels — TUGAS.PIXEL {{ new Date().getFullYear() }}</p>
+      <p>made with 🧡 &amp; pixels — NekoTask.io {{ new Date().getFullYear() }}</p>
     </footer>
   </div>
 </template>
