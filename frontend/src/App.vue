@@ -630,7 +630,7 @@ onMounted(() => {
         <div class="filter-controls">
           <input
             v-model="searchQuery"
-            @input="fetchTodos"
+            @input="debouncedFetchTodos"
             type="text"
             placeholder="🔍 Cari tugas..."
             class="search-input"
