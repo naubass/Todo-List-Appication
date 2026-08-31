@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 
 const todos = ref([]);
 const inputTitle = ref('');
@@ -8,6 +8,10 @@ const loading = ref(true);
 // State untuk mode edit
 const editingId = ref(null);
 const editingTitle = ref('');
+
+// === State Search & Filter ===
+const searchQuery = ref('');
+const statusFilter = ref('all'); // 'all' | 'completed' | 'pending'
 
 // === State Autentikasi ===
 const user = ref(null); // { id, email }
@@ -153,6 +157,8 @@ const handleLogout = async () => {
     displayName.value = '';
     avatarUrl.value = '';
     avatarBase64.value = '';
+    searchQuery.value = '';
+    statusFilter.value = 'all';
     localStorage.removeItem('todo_user');
   }
 };
@@ -237,17 +243,50 @@ const handleDelete = async (id) => {
 const totalTodos = computed(() => todos.value.length);
 const doneTodos = computed(() => todos.value.filter(t => t.is_completed).length);
 
+// === Search & Filter ===
+const filteredTodos = computed(() => {
+  let result = todos.value;
+
+  // Filter berdasarkan status
+  if (statusFilter.value === 'completed') {
+    result = result.filter(t => t.is_completed);
+  } else if (statusFilter.value === 'pending') {
+    result = result.filter(t => !t.is_completed);
+  }
+
+  // Filter berdasarkan kata kunci pencarian
+  const q = searchQuery.value.trim().toLowerCase();
+  if (q) {
+    result = result.filter(t => t.title.toLowerCase().includes(q));
+  }
+
+  return result;
+});
+
+const setStatusFilter = (value) => {
+  statusFilter.value = value;
+};
+
+const clearSearch = () => {
+  searchQuery.value = '';
+};
+
+// Reset ke halaman pertama setiap kali search/filter berubah
+watch([searchQuery, statusFilter], () => {
+  currentPage.value = 1;
+});
+
 // === Pagination ===
 const currentPage = ref(1);
 const itemsPerPage = 10;
 
 const totalPages = computed(() => {
-  return Math.max(1, Math.ceil(todos.value.length / itemsPerPage));
+  return Math.max(1, Math.ceil(filteredTodos.value.length / itemsPerPage));
 });
 
 const paginatedTodos = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage;
-  return todos.value.slice(start, start + itemsPerPage);
+  return filteredTodos.value.slice(start, start + itemsPerPage);
 });
 
 const goToFirstPage = () => { currentPage.value = 1; };
@@ -420,6 +459,40 @@ onMounted(() => {
             <button type="submit" class="btn-pixel btn-pixel--primary">Tambah</button>
           </form>
 
+          <!-- === Search & Filter Bar === -->
+          <div class="filter-bar">
+            <div class="search-box">
+              <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="🔍 Cari tugas..."
+                class="search-input"
+              />
+              <button v-if="searchQuery" @click="clearSearch" class="search-clear" type="button">✕</button>
+            </div>
+
+            <div class="status-filters">
+              <button
+                @click="setStatusFilter('all')"
+                :class="{ active: statusFilter === 'all' }"
+                class="btn-filter"
+                type="button"
+              >Semua</button>
+              <button
+                @click="setStatusFilter('pending')"
+                :class="{ active: statusFilter === 'pending' }"
+                class="btn-filter"
+                type="button"
+              >⏳ Belum Selesai</button>
+              <button
+                @click="setStatusFilter('completed')"
+                :class="{ active: statusFilter === 'completed' }"
+                class="btn-filter"
+                type="button"
+              >✅ Selesai</button>
+            </div>
+          </div>
+
           <p v-if="loading" class="loading-text">Memuat data...</p>
 
           <ul v-else class="todo-list">
@@ -448,12 +521,16 @@ onMounted(() => {
               </template>
             </li>
 
-            <li v-if="!loading && paginatedTodos.length === 0" class="empty-state">
+            <li v-if="!loading && paginatedTodos.length === 0 && todos.length > 0" class="empty-state">
+              Tidak ada tugas yang cocok dengan pencarian/filter kamu. 🔍
+            </li>
+
+            <li v-if="!loading && todos.length === 0" class="empty-state">
               Belum ada tugas. Tambahkan satu di atas! 🐱
             </li>
           </ul>
 
-          <div v-if="!loading && todos.length > 0" class="pagination">
+          <div v-if="!loading && filteredTodos.length > 0" class="pagination">
             <button @click="goToFirstPage" :disabled="currentPage === 1" class="btn-page btn-page-edge">⏮</button>
             <button @click="goToPrevPage" :disabled="currentPage === 1" class="btn-page btn-page-edge">◀</button>
 
@@ -950,6 +1027,74 @@ h1, h2, h3, .brand-text, .btn-pixel, .stat-number, .hero-eyebrow {
   background: #fff;
 }
 
+/* ============ SEARCH & FILTER BAR ============ */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 3px dashed var(--ink);
+}
+
+.search-box {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+
+.search-input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 18px;
+  padding: 10px 36px 10px 12px;
+  border: 3px solid var(--ink);
+  background: #fff;
+  color: var(--ink);
+}
+
+.search-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--sun);
+}
+
+.search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--coral-dark);
+  padding: 0 4px;
+}
+
+.status-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-filter {
+  font-family: var(--font-body);
+  font-size: 16px;
+  padding: 8px 14px;
+  border: 3px solid var(--ink);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-filter.active {
+  background: var(--sun);
+}
+
 .loading-text {
   text-align: center;
   font-size: 20px;
@@ -1069,6 +1214,8 @@ h1, h2, h3, .brand-text, .btn-pixel, .stat-number, .hero-eyebrow {
   .hero-scene { order: -1; }
   .navbar-inner { flex-wrap: wrap; gap: 12px; }
   .nav-links { order: 3; width: 100%; justify-content: center; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .status-filters { justify-content: center; }
 }
 
 @media (max-width: 520px) {
