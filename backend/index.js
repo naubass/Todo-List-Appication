@@ -1,5 +1,5 @@
 // backend/index.js
-import 'dotenv/config';
+import 'dotenv/config'; 
 import express from 'express';
 import cors from 'cors';
 import { supabase } from './supabaseClient.js';
@@ -11,18 +11,26 @@ app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
-// PENTING: cegah browser/proxy menyimpan cache dari response API
-app.use('/api', (req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  next();
-});
+// DEBUG SEMENTARA - HAPUS SETELAH SELESAI
+// app.get('/api/debug', (req, res) => {
+//   const url = process.env.SUPABASE_URL || '';
+//   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+//   res.status(200).json({
+//     url_length: url.length,
+//     url_preview: url.slice(0, 40),
+//     key_length: key.length,
+//     key_starts_with: key.slice(0, 20),
+//     key_ends_with: key.slice(-20),
+//     key_has_newline: key.includes('\n'),
+//     key_has_space: key.includes(' '),
+//   });
+// });
 
 // ==========================================
 // 0. ENDPOINT AUTENTIKASI (AUTH)
 // ==========================================
 
+// POST: Registrasi user baru
 app.post('/api/register', async (req, res) => {
   const { email, password } = req.body;
   try {
@@ -34,6 +42,7 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
+// POST: Login user
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   try {
@@ -45,23 +54,18 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Logout: revoke token via admin API (client di backend pakai service-role,
-// jadi tidak punya session user sendiri — signOut() biasa akan selalu gagal)
+// POST: Logout user
 app.post('/api/logout', async (req, res) => {
-  const { access_token } = req.body;
-
   try {
-    if (access_token) {
-      const { error } = await supabase.auth.admin.signOut(access_token, 'global');
-      if (error) throw error;
-    }
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     res.status(200).json({ message: 'Logout berhasil' });
   } catch (err) {
-    // Token sudah invalid/expired tetap dianggap sukses logout di sisi client
-    res.status(200).json({ message: 'Logout berhasil (sesi sudah tidak aktif)' });
+    res.status(500).json({ error: err.message });
   }
 });
 
+// PUT: Update profil (nama tampilan & avatar)
 app.put('/api/profile', async (req, res) => {
   const { user_id, display_name, avatar_base64 } = req.body;
 
@@ -88,6 +92,7 @@ app.put('/api/profile', async (req, res) => {
 // 1. ENDPOINT KATEGORI (CATEGORIES)
 // ==========================================
 
+// GET: Ambil kategori user
 app.get('/api/categories', async (req, res) => {
   const { user_id } = req.query;
   try {
@@ -104,6 +109,7 @@ app.get('/api/categories', async (req, res) => {
   }
 });
 
+// POST: Tambah kategori baru
 app.post('/api/categories', async (req, res) => {
   const { user_id, name, color_hex } = req.body;
   try {
@@ -123,6 +129,7 @@ app.post('/api/categories', async (req, res) => {
 // 2. ENDPOINT TODOS (FILTER, SEARCH & SORT)
 // ==========================================
 
+// GET: Ambil Todos dengan Relasi Lengkap, Filter, Search, dan Sorting
 app.get('/api/todos', async (req, res) => {
   const {
     user_id,
@@ -147,17 +154,23 @@ app.get('/api/todos', async (req, res) => {
       .eq('user_id', user_id)
       .eq('is_archived', is_archived === 'true');
 
+    // Filter Kategori
     if (category_id) query = query.eq('category_id', category_id);
+
+    // Filter Prioritas (low, medium, high)
     if (priority) query = query.eq('priority', priority);
 
+    // Filter Status Selesai
     if (is_completed !== undefined) {
       query = query.eq('is_completed', is_completed === 'true');
     }
 
+    // Pencarian Realtime (title atau description)
     if (search) {
       query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
     }
 
+    // Sorting (due_date / created_at / priority)
     const isAscending = order === 'asc';
     query = query.order(sort_by, { ascending: isAscending, nullsFirst: false });
 
@@ -170,6 +183,7 @@ app.get('/api/todos', async (req, res) => {
   }
 });
 
+// POST: Buat Todo baru
 app.post('/api/todos', async (req, res) => {
   const { user_id, title, description, due_date, priority, category_id } = req.body;
   try {
@@ -194,6 +208,7 @@ app.post('/api/todos', async (req, res) => {
   }
 });
 
+// PUT: Update Todo (Status, Info, atau Toggle Arsip)
 app.put('/api/todos/:id', async (req, res) => {
   const { id } = req.params;
   const { user_id, ...updatePayload } = req.body;
@@ -222,6 +237,7 @@ app.put('/api/todos/:id', async (req, res) => {
   }
 });
 
+// DELETE: Hapus Todo
 app.delete('/api/todos/:id', async (req, res) => {
   const { id } = req.params;
   const { user_id } = req.query;
@@ -243,6 +259,7 @@ app.delete('/api/todos/:id', async (req, res) => {
 // 3. ENDPOINT SUBTASKS / CHECKLIST
 // ==========================================
 
+// POST: Tambah Subtask
 app.post('/api/todos/:todo_id/subtasks', async (req, res) => {
   const { todo_id } = req.params;
   const { title } = req.body;
@@ -260,6 +277,7 @@ app.post('/api/todos/:todo_id/subtasks', async (req, res) => {
   }
 });
 
+// PUT: Toggle Status Selesai Subtask
 app.put('/api/subtasks/:id', async (req, res) => {
   const { id } = req.params;
   const { is_completed, title } = req.body;
@@ -282,6 +300,7 @@ app.put('/api/subtasks/:id', async (req, res) => {
   }
 });
 
+// DELETE: Hapus Subtask
 app.delete('/api/subtasks/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -297,6 +316,7 @@ app.delete('/api/subtasks/:id', async (req, res) => {
 // 4. ENDPOINT UPLOAD LAMPIRAN (STORAGE)
 // ==========================================
 
+// POST: Upload file dokumen/gambar pendukung Todo
 app.post('/api/todos/:todo_id/attachments', async (req, res) => {
   const { todo_id } = req.params;
   const { user_id, file_base64, file_name, mime_type, file_size } = req.body;
@@ -305,6 +325,7 @@ app.post('/api/todos/:todo_id/attachments', async (req, res) => {
     const buffer = Buffer.from(file_base64.split(',')[1], 'base64');
     const storagePath = `${user_id}/${todo_id}_${Date.now()}_${file_name}`;
 
+    // 1. Upload ke Bucket Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('todo-attachments')
       .upload(storagePath, buffer, {
@@ -314,10 +335,12 @@ app.post('/api/todos/:todo_id/attachments', async (req, res) => {
 
     if (uploadError) throw uploadError;
 
+    // 2. Ambil Public URL
     const { data: publicUrlData } = supabase.storage
       .from('todo-attachments')
       .getPublicUrl(storagePath);
 
+    // 3. Simpan Metadata ke DB
     const { data, error: dbError } = await supabase
       .from('todo_attachments')
       .insert([{
@@ -339,12 +362,14 @@ app.post('/api/todos/:todo_id/attachments', async (req, res) => {
 // 5. ENDPOINT STATISTIK & PRODUKTIVITAS
 // ==========================================
 
+// GET: Rekap Ringkasan Analitik Dashboard
 app.get('/api/analytics/summary', async (req, res) => {
   const { user_id } = req.query;
 
   try {
     const now = new Date().toISOString();
 
+    // 1. Ambil seluruh todo aktif user
     const { data: allTodos, error } = await supabase
       .from('todos')
       .select('id, is_completed, due_date, priority, is_archived, created_at')
@@ -356,15 +381,18 @@ app.get('/api/analytics/summary', async (req, res) => {
     const totalCompleted = allTodos.filter(t => t.is_completed).length;
     const totalArchived = allTodos.filter(t => t.is_archived).length;
 
+    // Overdue: Belum selesai dan batas waktu sudah lewat dari waktu saat ini
     const overdue = allTodos.filter(
       t => !t.is_completed && !t.is_archived && t.due_date && t.due_date < now
     ).length;
 
+    // Due Today: Deadline hari ini
     const todayStr = new Date().toISOString().slice(0, 10);
     const dueToday = allTodos.filter(
       t => !t.is_completed && !t.is_archived && t.due_date && t.due_date.startsWith(todayStr)
     ).length;
 
+    // Breakdown prioritas untuk todo aktif
     const priorityBreakdown = {
       high: allTodos.filter(t => !t.is_completed && !t.is_archived && t.priority === 'high').length,
       medium: allTodos.filter(t => !t.is_completed && !t.is_archived && t.priority === 'medium').length,
@@ -391,13 +419,8 @@ app.use('/api', (req, res) => {
   res.status(404).json({ error: `Endpoint tidak ditemukan: ${req.method} ${req.originalUrl}` });
 });
 
-// PENTING: di Vercel, function ini dipanggil sebagai serverless handler —
-// app.listen() TIDAK boleh jalan di sana (tidak ada port untuk di-listen).
-// listen() hanya dijalankan saat development lokal.
-if (process.env.VERCEL !== '1') {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-}
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
 export default app;
