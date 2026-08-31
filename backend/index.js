@@ -1,5 +1,5 @@
 // backend/index.js
-import 'dotenv/config'; 
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { supabase } from './supabaseClient.js';
@@ -11,21 +11,6 @@ app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
-// DEBUG SEMENTARA - HAPUS SETELAH SELESAI
-// app.get('/api/debug', (req, res) => {
-//   const url = process.env.SUPABASE_URL || '';
-//   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-//   res.status(200).json({
-//     url_length: url.length,
-//     url_preview: url.slice(0, 40),
-//     key_length: key.length,
-//     key_starts_with: key.slice(0, 20),
-//     key_ends_with: key.slice(-20),
-//     key_has_newline: key.includes('\n'),
-//     key_has_space: key.includes(' '),
-//   });
-// });
-
 // PENTING: cegah browser/proxy menyimpan cache dari response API
 app.use('/api', (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -33,13 +18,6 @@ app.use('/api', (req, res, next) => {
   res.set('Expires', '0');
   next();
 });
-
-// ==========================================
-// HEALTH CHECK (untuk keep-alive / uptime ping)
-// ==========================================
-// app.get('/api/health', (req, res) => {
-//   res.status(200).json({ status: 'ok', time: new Date().toISOString() });
-// });
 
 // ==========================================
 // 0. ENDPOINT AUTENTIKASI (AUTH)
@@ -67,13 +45,20 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Logout: revoke token via admin API (client di backend pakai service-role,
+// jadi tidak punya session user sendiri — signOut() biasa akan selalu gagal)
 app.post('/api/logout', async (req, res) => {
+  const { access_token } = req.body;
+
   try {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    if (access_token) {
+      const { error } = await supabase.auth.admin.signOut(access_token, 'global');
+      if (error) throw error;
+    }
     res.status(200).json({ message: 'Logout berhasil' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    // Token sudah invalid/expired tetap dianggap sukses logout di sisi client
+    res.status(200).json({ message: 'Logout berhasil (sesi sudah tidak aktif)' });
   }
 });
 
@@ -406,8 +391,13 @@ app.use('/api', (req, res) => {
   res.status(404).json({ error: `Endpoint tidak ditemukan: ${req.method} ${req.originalUrl}` });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// PENTING: di Vercel, function ini dipanggil sebagai serverless handler —
+// app.listen() TIDAK boleh jalan di sana (tidak ada port untuk di-listen).
+// listen() hanya dijalankan saat development lokal.
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
 export default app;

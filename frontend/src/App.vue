@@ -6,6 +6,11 @@ const todos = ref([]);
 const categories = ref([]);
 const loading = ref(true);
 
+// Frontend & backend satu domain (lihat vercel.json: /api/* -> backend/index.js),
+// jadi path relatif sudah cukup — tidak perlu base URL terpisah.
+const API_URL = '/api/todos';
+const AUTH_URL = '/api';
+
 // State Form Tambah Todo Baru
 const inputTitle = ref('');
 const inputDescription = ref('');
@@ -40,14 +45,13 @@ const editingDescription = ref('');
 
 // === State Autentikasi ===
 const user = ref(null);
+const session = ref(null);
 const authView = ref('login'); // 'login' | 'register'
 const authEmail = ref('');
 const authPassword = ref('');
 const authError = ref('');
 const authLoading = ref(false);
-
-const API_URL = '/api/todos';
-const AUTH_URL = '/api';
+const dashboardReady = ref(false); // true setelah todos + categories + stats awal selesai dimuat
 
 // === State Profil User ===
 const displayName = ref('');
@@ -102,7 +106,7 @@ const handleSaveProfile = async () => {
 const fetchCategories = async () => {
   if (!user.value) return;
   try {
-    const res = await fetch(`/api/categories?user_id=${user.value.id}`, { cache: 'no-store' });
+    const res = await fetch(`${AUTH_URL}/categories?user_id=${user.value.id}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`Gagal ambil kategori (status ${res.status})`);
     categories.value = await res.json();
   } catch (err) {
@@ -113,7 +117,7 @@ const fetchCategories = async () => {
 const fetchAnalytics = async () => {
   if (!user.value) return;
   try {
-    const res = await fetch(`/api/analytics/summary?user_id=${user.value.id}`, { cache: 'no-store' });
+    const res = await fetch(`${AUTH_URL}/analytics/summary?user_id=${user.value.id}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`Gagal ambil statistik (status ${res.status})`);
     stats.value = await res.json();
   } catch (err) {
@@ -129,6 +133,8 @@ const fetchTodos = async () => {
   currentPage.value = 1;
 
   const thisRequestId = ++todosRequestId;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 detik, biar tidak stuck selamanya
 
   try {
     const params = new URLSearchParams({
@@ -144,14 +150,16 @@ const fetchTodos = async () => {
     if (filterStatus.value === 'pending') params.append('is_completed', 'false');
     if (searchQuery.value.trim()) params.append('search', searchQuery.value.trim());
 
-    const res = await fetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
+    const res = await fetch(`${API_URL}?${params.toString()}`, { cache: 'no-store', signal: controller.signal });
     if (thisRequestId !== todosRequestId) return; // ada request lain yang lebih baru
 
     if (!res.ok) throw new Error(`Gagal ambil todos (status ${res.status})`);
     todos.value = await res.json();
   } catch (err) {
     console.error('Gagal mengambil data todos', err);
+    if (thisRequestId === todosRequestId) todos.value = [];
   } finally {
+    clearTimeout(timeoutId);
     if (thisRequestId === todosRequestId) loading.value = false;
   }
 };
@@ -160,6 +168,15 @@ const fetchTodos = async () => {
 watch([currentTab, filterCategoryId, filterPriority, filterStatus, sortBy, sortOrder], () => {
   fetchTodos();
 });
+
+// Debounce pencarian
+let searchDebounceTimer = null;
+const debouncedFetchTodos = () => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    fetchTodos();
+  }, 350);
+};
 
 // === Auth Functions ===
 const handleRegister = async () => {
@@ -187,9 +204,12 @@ const handleRegister = async () => {
 const handleLogin = async () => {
   authError.value = '';
   authLoading.value = true;
+  dashboardReady.value = false;
+
   try {
     const res = await fetch(`${AUTH_URL}/login`, {
       method: 'POST',
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: authEmail.value, password: authPassword.value }),
     });
@@ -197,33 +217,61 @@ const handleLogin = async () => {
     if (!res.ok) throw new Error(data.error || 'Login gagal');
 
     user.value = data.user;
+    session.value = data.session;
     localStorage.setItem('todo_user', JSON.stringify(user.value));
+    localStorage.setItem('todo_session', JSON.stringify(data.session));
     setProfileData(data.user);
 
     authEmail.value = '';
     authPassword.value = '';
-    
-    await Promise.all([fetchCategories(), fetchTodos(), fetchAnalytics()]);
+
+    // Tunggu SEMUA data awal selesai dulu, baru dashboard ditampilkan —
+    // jadi begitu render, datanya sudah lengkap, tidak perlu refresh manual.
+    await Promise.all([
+      fetchCategories(),
+      fetchTodosWithRetry(),
+      fetchAnalytics(),
+    ]);
   } catch (err) {
     authError.value = err.message;
+    user.value = null;
+    localStorage.removeItem('todo_user');
+    localStorage.removeItem('todo_session');
   } finally {
     authLoading.value = false;
+    dashboardReady.value = true; // selalu di-set, apapun hasilnya, biar tidak stuck
+  }
+};
+
+// Retry sekali kalau percobaan pertama gagal — menutupi cold start
+const fetchTodosWithRetry = async () => {
+  await fetchTodos();
+  if (todos.value.length === 0) {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await fetchTodos();
   }
 };
 
 const handleLogout = async () => {
   try {
-    await fetch(`${AUTH_URL}/logout`, { method: 'POST' });
+    await fetch(`${AUTH_URL}/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access_token: session.value?.access_token }),
+    });
   } catch (err) {
     console.error('Gagal logout di server', err);
   } finally {
     user.value = null;
+    session.value = null;
     todos.value = [];
     categories.value = [];
     displayName.value = '';
     avatarUrl.value = '';
     avatarBase64.value = '';
+    dashboardReady.value = false;
     localStorage.removeItem('todo_user');
+    localStorage.removeItem('todo_session');
   }
 };
 
@@ -352,7 +400,7 @@ const handleAddSubtask = async (todoId) => {
   if (!title) return;
 
   try {
-    const res = await fetch(`/api/todos/${todoId}/subtasks`, {
+    const res = await fetch(`${AUTH_URL}/todos/${todoId}/subtasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
@@ -369,7 +417,7 @@ const handleAddSubtask = async (todoId) => {
 
 const toggleSubtask = async (subtask) => {
   try {
-    const res = await fetch(`/api/subtasks/${subtask.id}`, {
+    const res = await fetch(`${AUTH_URL}/subtasks/${subtask.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_completed: !subtask.is_completed }),
@@ -383,7 +431,7 @@ const toggleSubtask = async (subtask) => {
 
 const deleteSubtask = async (subtaskId) => {
   try {
-    const res = await fetch(`/api/subtasks/${subtaskId}`, {
+    const res = await fetch(`${AUTH_URL}/subtasks/${subtaskId}`, {
       method: 'DELETE',
     });
 
@@ -401,7 +449,7 @@ const handleAttachmentUpload = async (event, todoId) => {
   const reader = new FileReader();
   reader.onload = async (e) => {
     try {
-      const res = await fetch(`/api/todos/${todoId}/attachments`, {
+      const res = await fetch(`${AUTH_URL}/todos/${todoId}/attachments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -488,16 +536,30 @@ const visiblePageNumbers = computed(() => {
   return pages;
 });
 
-onMounted(() => {
+onMounted(async () => {
   const saved = localStorage.getItem('todo_user');
+  const savedSession = localStorage.getItem('todo_session');
+  if (savedSession) session.value = JSON.parse(savedSession);
+
   if (saved) {
-    user.value = JSON.parse(saved);
-    setProfileData(user.value);
-    fetchCategories();
-    fetchTodos();
-    fetchAnalytics();
+    try {
+      user.value = JSON.parse(saved);
+      setProfileData(user.value);
+
+      await Promise.all([
+        fetchCategories(),
+        fetchTodos(),
+        fetchAnalytics(),
+      ]);
+    } catch (err) {
+      console.error('Gagal memuat data awal', err);
+    } finally {
+      dashboardReady.value = true; // selalu jalan, apapun hasilnya
+      loading.value = false;
+    }
   } else {
     loading.value = false;
+    dashboardReady.value = true;
   }
 });
 </script>
@@ -530,298 +592,306 @@ onMounted(() => {
 
     <!-- === Dashboard Tugas (Jika Sudah Login) === -->
     <template v-else>
-      <!-- User Bar -->
-      <div class="user-bar">
-        <span>👤 {{ displayName || user.email }}</span>
-        <button @click="handleLogout" class="btn-logout">Logout</button>
+      <!-- Loading Penuh: tampil selama proses login/refresh awal data berlangsung -->
+      <div v-if="authLoading || !dashboardReady" class="dashboard-loading">
+        <div class="spinner"></div>
+        <p>Menyiapkan tugas kamu...</p>
       </div>
 
-      <!-- Profil & Avatar -->
-      <div class="profile-section">
-        <div class="avatar-box">
-          <img 
-            :src="avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.email}`" 
-            class="pixel-avatar" 
-          />
-          <label class="custom-file-upload">
-            <input type="file" @change="handleFileUpload" accept="image/*" />
-            <span>Pilih Foto</span>
-          </label>
-        </div>
-        <input v-model="displayName" type="text" placeholder="Masukkan nama kamu..." class="profile-input" />
-        <button @click="handleSaveProfile" class="btn-save">Simpan Profil</button>
-      </div>
-
-      <!-- Widget Ringkasan Statistik & Produktivitas -->
-      <div class="analytics-grid">
-        <div class="stat-card">
-          <span class="stat-num">{{ stats.total_active }}</span>
-          <span class="stat-label">Tugas Aktif</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-num">{{ stats.total_completed }}</span>
-          <span class="stat-label">Selesai</span>
-        </div>
-        <div class="stat-card danger" :class="{ alert: stats.overdue_count > 0 }">
-          <span class="stat-num">{{ stats.overdue_count }}</span>
-          <span class="stat-label">⚠️ Overdue</span>
-        </div>
-        <div class="stat-card warning">
-          <span class="stat-num">{{ stats.due_today_count }}</span>
-          <span class="stat-label">⏰ Hari Ini</span>
-        </div>
-      </div>
-
-      <!-- Form Pembuatan Todo Baru -->
-      <form @submit.prevent="handleSubmit" class="todo-form">
-        <div class="form-row">
-          <input
-            v-model="inputTitle"
-            type="text"
-            placeholder="Judul tugas baru..."
-            required
-            class="input-title"
-          />
-          <select v-model="inputPriority" class="select-priority">
-            <option value="low">🟢 Prioritas Rendah</option>
-            <option value="medium">🟡 Prioritas Sedang</option>
-            <option value="high">🔴 Prioritas Tinggi</option>
-          </select>
+      <template v-else>
+        <!-- User Bar -->
+        <div class="user-bar">
+          <span>👤 {{ displayName || user.email }}</span>
+          <button @click="handleLogout" class="btn-logout">Logout</button>
         </div>
 
-        <textarea
-          v-model="inputDescription"
-          placeholder="Catatan / deskripsi tambahan (opsional)..."
-          rows="2"
-          class="input-desc"
-        ></textarea>
-
-        <div class="form-row">
-          <select v-model="inputCategoryId" class="select-category">
-            <option value="">📁 Tanpa Kategori</option>
-            <option v-for="cat in categories" :key="cat.id" :value="cat.id">
-              {{ cat.name }}
-            </option>
-          </select>
-
-          <input
-            v-model="inputDueDate"
-            type="datetime-local"
-            class="input-date"
-            title="Tenggat Waktu"
-          />
-
-          <button type="submit" class="btn-add">Tambah Tugas</button>
-        </div>
-      </form>
-
-      <!-- Tab Navigasi & Filter Toolbar -->
-      <div class="filter-toolbar">
-        <div class="tab-switch">
-          <button 
-            :class="{ active: currentTab === 'active' }" 
-            @click="currentTab = 'active'"
-          >
-            📋 Tugas Aktif
-          </button>
-          <button 
-            :class="{ active: currentTab === 'archived' }" 
-            @click="currentTab = 'archived'"
-          >
-            📦 Arsip ({{ stats.total_archived }})
-          </button>
-        </div>
-
-        <!-- Pencarian & Filter Cerdas -->
-        <div class="filter-controls">
-          <input
-            v-model="searchQuery"
-            @input="debouncedFetchTodos"
-            type="text"
-            placeholder="🔍 Cari tugas..."
-            class="search-input"
-          />
-
-          <select v-model="filterCategoryId">
-            <option value="">Semua Kategori</option>
-            <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
-          </select>
-
-          <select v-model="filterPriority">
-            <option value="">Semua Prioritas</option>
-            <option value="high">🔴 Tinggi</option>
-            <option value="medium">🟡 Sedang</option>
-            <option value="low">🟢 Rendah</option>
-          </select>
-
-          <select v-model="filterStatus" v-if="currentTab === 'active'">
-            <option value="">Semua Status</option>
-            <option value="pending">⏳ Belum Selesai</option>
-            <option value="completed">✅ Selesai</option>
-          </select>
-
-          <select v-model="sortBy">
-            <option value="created_at">Urutkan: Tanggal Dibuat</option>
-            <option value="due_date">Urutkan: Tenggat Waktu</option>
-          </select>
-        </div>
-      </div>
-
-      <p v-if="loading" class="loading-text">Memuat data tugas...</p>
-      <p v-else-if="todos.length === 0" class="empty-text">Tidak ada tugas yang cocok.</p>
-
-      <!-- Daftar Card Todos -->
-      <ul v-else class="todo-list">
-        <li 
-          v-for="todo in paginatedTodos" 
-          :key="todo.id" 
-          class="todo-card"
-          :class="[
-            { completed: todo.is_completed },
-            `status-${getDueDateStatus(todo.due_date, todo.is_completed)}`
-          ]"
-        >
-          <!-- Header Todo: Status, Judul & Badges -->
-          <div class="todo-main">
-            <!-- Mode Edit Judul & Deskripsi -->
-            <div v-if="editingId === todo.id" class="edit-wrapper">
-              <input v-model="editingTitle" type="text" class="edit-input" />
-              <textarea v-model="editingDescription" rows="2" class="edit-textarea"></textarea>
-              <div class="edit-actions">
-                <button @click="handleUpdateTodo(todo.id)" class="btn-save">Simpan</button>
-                <button @click="cancelEdit" class="btn-cancel">Batal</button>
-              </div>
-            </div>
-
-            <!-- Mode Tampilan Normal -->
-            <div v-else class="todo-content">
-              <div class="todo-header-row">
-                <span @click="toggleComplete(todo)" class="todo-check-icon">
-                  {{ todo.is_completed ? '✅' : '⏳' }}
-                </span>
-                <span class="todo-title-text" :class="{ strikethrough: todo.is_completed }">
-                  {{ todo.title }}
-                </span>
-
-                <!-- Priority Badge -->
-                <span :class="`badge-priority priority-${todo.priority}`">
-                  {{ todo.priority.toUpperCase() }}
-                </span>
-
-                <!-- Category Tag -->
-                <span 
-                  v-if="todo.categories" 
-                  class="badge-category" 
-                  :style="{ backgroundColor: todo.categories.color_hex || '#3B82F6' }"
-                >
-                  {{ todo.categories.name }}
-                </span>
-              </div>
-
-              <p v-if="todo.description" class="todo-desc-text">{{ todo.description }}</p>
-
-              <!-- Due Date Alert Badge -->
-              <div v-if="todo.due_date" class="due-date-row">
-                <span 
-                  class="badge-due" 
-                  :class="getDueDateStatus(todo.due_date, todo.is_completed)"
-                >
-                  🗓 Tenggat: {{ formatDate(todo.due_date) }}
-                  <template v-if="getDueDateStatus(todo.due_date, todo.is_completed) === 'overdue'">
-                    (Terlewat)
-                  </template>
-                  <template v-else-if="getDueDateStatus(todo.due_date, todo.is_completed) === 'due-soon'">
-                    (Mendekati Batas)
-                  </template>
-                </span>
-              </div>
-            </div>
-
-            <!-- Tombol Aksi Todo -->
-            <div class="todo-actions">
-              <button @click="startEdit(todo)" class="btn-edit">✏️</button>
-              <button @click="toggleArchive(todo)" class="btn-archive" :title="todo.is_archived ? 'Buka dari Arsip' : 'Arsipkan'">
-                {{ todo.is_archived ? '📤 Unarchive' : '📦 Arsip' }}
-              </button>
-              <button @click="handleDelete(todo.id)" class="btn-delete">🗑️</button>
-            </div>
-          </div>
-
-          <!-- Section Subtasks / Checklist -->
-          <div class="subtasks-section">
-            <div v-if="todo.subtasks && todo.subtasks.length > 0" class="progress-bar-container">
-              <div class="progress-bar-track">
-                <div 
-                  class="progress-bar-fill" 
-                  :style="{ width: `${calculateProgress(todo.subtasks)}%` }"
-                ></div>
-              </div>
-              <span class="progress-text">{{ calculateProgress(todo.subtasks) }}% Selesai</span>
-            </div>
-
-            <!-- Daftar Subtasks -->
-            <div class="subtask-list">
-              <div v-for="sub in todo.subtasks" :key="sub.id" class="subtask-item">
-                <input 
-                  type="checkbox" 
-                  :checked="sub.is_completed" 
-                  @change="toggleSubtask(sub)" 
-                />
-                <span :class="{ completed: sub.is_completed }">{{ sub.title }}</span>
-                <button @click="deleteSubtask(sub.id)" class="btn-sub-del">×</button>
-              </div>
-            </div>
-
-            <!-- Tambah Subtask Cepat -->
-            <div class="add-subtask-box">
-              <input
-                v-model="newSubtaskTitles[todo.id]"
-                type="text"
-                placeholder="+ Tambah checklist..."
-                @keyup.enter="handleAddSubtask(todo.id)"
-              />
-              <button @click="handleAddSubtask(todo.id)" class="btn-add-sub">OK</button>
-            </div>
-          </div>
-
-          <!-- Section Lampiran Berkas (Attachments) -->
-          <div class="attachments-section">
-            <div class="attachments-list" v-if="todo.todo_attachments && todo.todo_attachments.length > 0">
-              <a 
-                v-for="att in todo.todo_attachments" 
-                :key="att.id" 
-                :href="att.file_url" 
-                target="_blank" 
-                class="attachment-chip"
-              >
-                📎 {{ att.file_name }}
-              </a>
-            </div>
-            
-            <label class="btn-upload-file">
-              <input type="file" @change="handleAttachmentUpload($event, todo.id)" />
-              <span>+ Unggah Lampiran Dokumen/Foto</span>
+        <!-- Profil & Avatar -->
+        <div class="profile-section">
+          <div class="avatar-box">
+            <img 
+              :src="avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.email}`" 
+              class="pixel-avatar" 
+            />
+            <label class="custom-file-upload">
+              <input type="file" @change="handleFileUpload" accept="image/*" />
+              <span>Pilih Foto</span>
             </label>
           </div>
-        </li>
-      </ul>
+          <input v-model="displayName" type="text" placeholder="Masukkan nama kamu..." class="profile-input" />
+          <button @click="handleSaveProfile" class="btn-save">Simpan Profil</button>
+        </div>
 
-      <!-- Pagination -->
-      <div v-if="!loading && todos.length > 0" class="pagination">
-        <button @click="goToFirstPage" :disabled="currentPage === 1" class="btn-page btn-page-edge">⏮</button>
-        <button @click="goToPrevPage" :disabled="currentPage === 1" class="btn-page btn-page-edge">◀</button>
+        <!-- Widget Ringkasan Statistik & Produktivitas -->
+        <div class="analytics-grid">
+          <div class="stat-card">
+            <span class="stat-num">{{ stats.total_active }}</span>
+            <span class="stat-label">Tugas Aktif</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-num">{{ stats.total_completed }}</span>
+            <span class="stat-label">Selesai</span>
+          </div>
+          <div class="stat-card danger" :class="{ alert: stats.overdue_count > 0 }">
+            <span class="stat-num">{{ stats.overdue_count }}</span>
+            <span class="stat-label">⚠️ Overdue</span>
+          </div>
+          <div class="stat-card warning">
+            <span class="stat-num">{{ stats.due_today_count }}</span>
+            <span class="stat-label">⏰ Hari Ini</span>
+          </div>
+        </div>
 
-        <button
-          v-for="page in visiblePageNumbers"
-          :key="page"
-          @click="goToPage(page)"
-          :class="{ active: page === currentPage }"
-          class="btn-page"
-        >{{ page }}</button>
+        <!-- Form Pembuatan Todo Baru -->
+        <form @submit.prevent="handleSubmit" class="todo-form">
+          <div class="form-row">
+            <input
+              v-model="inputTitle"
+              type="text"
+              placeholder="Judul tugas baru..."
+              required
+              class="input-title"
+            />
+            <select v-model="inputPriority" class="select-priority">
+              <option value="low">🟢 Prioritas Rendah</option>
+              <option value="medium">🟡 Prioritas Sedang</option>
+              <option value="high">🔴 Prioritas Tinggi</option>
+            </select>
+          </div>
 
-        <button @click="goToNextPage" :disabled="currentPage === totalPages" class="btn-page btn-page-edge">▶</button>
-        <button @click="goToLastPage" :disabled="currentPage === totalPages" class="btn-page btn-page-edge">⏭</button>
-      </div>
+          <textarea
+            v-model="inputDescription"
+            placeholder="Catatan / deskripsi tambahan (opsional)..."
+            rows="2"
+            class="input-desc"
+          ></textarea>
+
+          <div class="form-row">
+            <select v-model="inputCategoryId" class="select-category">
+              <option value="">📁 Tanpa Kategori</option>
+              <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+                {{ cat.name }}
+              </option>
+            </select>
+
+            <input
+              v-model="inputDueDate"
+              type="datetime-local"
+              class="input-date"
+              title="Tenggat Waktu"
+            />
+
+            <button type="submit" class="btn-add">Tambah Tugas</button>
+          </div>
+        </form>
+
+        <!-- Tab Navigasi & Filter Toolbar -->
+        <div class="filter-toolbar">
+          <div class="tab-switch">
+            <button 
+              :class="{ active: currentTab === 'active' }" 
+              @click="currentTab = 'active'"
+            >
+              📋 Tugas Aktif
+            </button>
+            <button 
+              :class="{ active: currentTab === 'archived' }" 
+              @click="currentTab = 'archived'"
+            >
+              📦 Arsip ({{ stats.total_archived }})
+            </button>
+          </div>
+
+          <!-- Pencarian & Filter Cerdas -->
+          <div class="filter-controls">
+            <input
+              v-model="searchQuery"
+              @input="debouncedFetchTodos"
+              type="text"
+              placeholder="🔍 Cari tugas..."
+              class="search-input"
+            />
+
+            <select v-model="filterCategoryId">
+              <option value="">Semua Kategori</option>
+              <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+            </select>
+
+            <select v-model="filterPriority">
+              <option value="">Semua Prioritas</option>
+              <option value="high">🔴 Tinggi</option>
+              <option value="medium">🟡 Sedang</option>
+              <option value="low">🟢 Rendah</option>
+            </select>
+
+            <select v-model="filterStatus" v-if="currentTab === 'active'">
+              <option value="">Semua Status</option>
+              <option value="pending">⏳ Belum Selesai</option>
+              <option value="completed">✅ Selesai</option>
+            </select>
+
+            <select v-model="sortBy">
+              <option value="created_at">Urutkan: Tanggal Dibuat</option>
+              <option value="due_date">Urutkan: Tenggat Waktu</option>
+            </select>
+          </div>
+        </div>
+
+        <p v-if="loading" class="loading-text">Memuat data tugas...</p>
+        <p v-else-if="todos.length === 0" class="empty-text">Tidak ada tugas yang cocok.</p>
+
+        <!-- Daftar Card Todos -->
+        <ul v-else class="todo-list">
+          <li 
+            v-for="todo in paginatedTodos" 
+            :key="todo.id" 
+            class="todo-card"
+            :class="[
+              { completed: todo.is_completed },
+              `status-${getDueDateStatus(todo.due_date, todo.is_completed)}`
+            ]"
+          >
+            <!-- Header Todo: Status, Judul & Badges -->
+            <div class="todo-main">
+              <!-- Mode Edit Judul & Deskripsi -->
+              <div v-if="editingId === todo.id" class="edit-wrapper">
+                <input v-model="editingTitle" type="text" class="edit-input" />
+                <textarea v-model="editingDescription" rows="2" class="edit-textarea"></textarea>
+                <div class="edit-actions">
+                  <button @click="handleUpdateTodo(todo.id)" class="btn-save">Simpan</button>
+                  <button @click="cancelEdit" class="btn-cancel">Batal</button>
+                </div>
+              </div>
+
+              <!-- Mode Tampilan Normal -->
+              <div v-else class="todo-content">
+                <div class="todo-header-row">
+                  <span @click="toggleComplete(todo)" class="todo-check-icon">
+                    {{ todo.is_completed ? '✅' : '⏳' }}
+                  </span>
+                  <span class="todo-title-text" :class="{ strikethrough: todo.is_completed }">
+                    {{ todo.title }}
+                  </span>
+
+                  <!-- Priority Badge -->
+                  <span :class="`badge-priority priority-${todo.priority}`">
+                    {{ todo.priority.toUpperCase() }}
+                  </span>
+
+                  <!-- Category Tag -->
+                  <span 
+                    v-if="todo.categories" 
+                    class="badge-category" 
+                    :style="{ backgroundColor: todo.categories.color_hex || '#3B82F6' }"
+                  >
+                    {{ todo.categories.name }}
+                  </span>
+                </div>
+
+                <p v-if="todo.description" class="todo-desc-text">{{ todo.description }}</p>
+
+                <!-- Due Date Alert Badge -->
+                <div v-if="todo.due_date" class="due-date-row">
+                  <span 
+                    class="badge-due" 
+                    :class="getDueDateStatus(todo.due_date, todo.is_completed)"
+                  >
+                    🗓 Tenggat: {{ formatDate(todo.due_date) }}
+                    <template v-if="getDueDateStatus(todo.due_date, todo.is_completed) === 'overdue'">
+                      (Terlewat)
+                    </template>
+                    <template v-else-if="getDueDateStatus(todo.due_date, todo.is_completed) === 'due-soon'">
+                      (Mendekati Batas)
+                    </template>
+                  </span>
+                </div>
+              </div>
+
+              <!-- Tombol Aksi Todo -->
+              <div class="todo-actions">
+                <button @click="startEdit(todo)" class="btn-edit">✏️</button>
+                <button @click="toggleArchive(todo)" class="btn-archive" :title="todo.is_archived ? 'Buka dari Arsip' : 'Arsipkan'">
+                  {{ todo.is_archived ? '📤 Unarchive' : '📦 Arsip' }}
+                </button>
+                <button @click="handleDelete(todo.id)" class="btn-delete">🗑️</button>
+              </div>
+            </div>
+
+            <!-- Section Subtasks / Checklist -->
+            <div class="subtasks-section">
+              <div v-if="todo.subtasks && todo.subtasks.length > 0" class="progress-bar-container">
+                <div class="progress-bar-track">
+                  <div 
+                    class="progress-bar-fill" 
+                    :style="{ width: `${calculateProgress(todo.subtasks)}%` }"
+                  ></div>
+                </div>
+                <span class="progress-text">{{ calculateProgress(todo.subtasks) }}% Selesai</span>
+              </div>
+
+              <!-- Daftar Subtasks -->
+              <div class="subtask-list">
+                <div v-for="sub in todo.subtasks" :key="sub.id" class="subtask-item">
+                  <input 
+                    type="checkbox" 
+                    :checked="sub.is_completed" 
+                    @change="toggleSubtask(sub)" 
+                  />
+                  <span :class="{ completed: sub.is_completed }">{{ sub.title }}</span>
+                  <button @click="deleteSubtask(sub.id)" class="btn-sub-del">×</button>
+                </div>
+              </div>
+
+              <!-- Tambah Subtask Cepat -->
+              <div class="add-subtask-box">
+                <input
+                  v-model="newSubtaskTitles[todo.id]"
+                  type="text"
+                  placeholder="+ Tambah checklist..."
+                  @keyup.enter="handleAddSubtask(todo.id)"
+                />
+                <button @click="handleAddSubtask(todo.id)" class="btn-add-sub">OK</button>
+              </div>
+            </div>
+
+            <!-- Section Lampiran Berkas (Attachments) -->
+            <div class="attachments-section">
+              <div class="attachments-list" v-if="todo.todo_attachments && todo.todo_attachments.length > 0">
+                <a 
+                  v-for="att in todo.todo_attachments" 
+                  :key="att.id" 
+                  :href="att.file_url" 
+                  target="_blank" 
+                  class="attachment-chip"
+                >
+                  📎 {{ att.file_name }}
+                </a>
+              </div>
+              
+              <label class="btn-upload-file">
+                <input type="file" @change="handleAttachmentUpload($event, todo.id)" />
+                <span>+ Unggah Lampiran Dokumen/Foto</span>
+              </label>
+            </div>
+          </li>
+        </ul>
+
+        <!-- Pagination -->
+        <div v-if="!loading && todos.length > 0" class="pagination">
+          <button @click="goToFirstPage" :disabled="currentPage === 1" class="btn-page btn-page-edge">⏮</button>
+          <button @click="goToPrevPage" :disabled="currentPage === 1" class="btn-page btn-page-edge">◀</button>
+
+          <button
+            v-for="page in visiblePageNumbers"
+            :key="page"
+            @click="goToPage(page)"
+            :class="{ active: page === currentPage }"
+            class="btn-page"
+          >{{ page }}</button>
+
+          <button @click="goToNextPage" :disabled="currentPage === totalPages" class="btn-page btn-page-edge">▶</button>
+          <button @click="goToLastPage" :disabled="currentPage === totalPages" class="btn-page btn-page-edge">⏭</button>
+        </div>
+      </template>
     </template>
   </main>
 </template>
@@ -846,6 +916,30 @@ onMounted(() => {
   font-size: 1.6rem;
   margin: 8px 0 28px;
   color: #1e293b;
+}
+
+/* ==========================================
+   DASHBOARD LOADING (spinner penuh setelah login/refresh)
+   ========================================== */
+.dashboard-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 80px 0;
+  color: #64748b;
+}
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ==========================================
