@@ -20,6 +20,13 @@ app.use('/api', (req, res, next) => {
 });
 
 // ==========================================
+// HEALTH CHECK (untuk keep-alive / uptime ping)
+// ==========================================
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', time: new Date().toISOString() });
+});
+
+// ==========================================
 // 0. ENDPOINT AUTENTIKASI (AUTH)
 // ==========================================
 
