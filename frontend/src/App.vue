@@ -113,15 +113,13 @@ const fetchCategories = async () => {
 const fetchAnalytics = async () => {
   if (!user.value) return;
   try {
-    const res = await fetch(`/api/analytics/summary?user_id=${user.value.id}`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Gagal ambil statistik (status ${res.status})`);
-    stats.value = await res.json();
+    const res = await fetch(`/api/analytics/summary?user_id=${user.value.id}`);
+    const data = await res.json();
+    if (res.ok) stats.value = data;
   } catch (err) {
     console.error('Gagal mengambil ringkasan statistik', err);
   }
 };
-
-let todosRequestId = 0;
 
 const fetchTodos = async () => {
   if (!user.value) return;

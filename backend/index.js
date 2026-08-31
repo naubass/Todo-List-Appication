@@ -12,19 +12,19 @@ app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
 // DEBUG SEMENTARA - HAPUS SETELAH SELESAI
-app.get('/api/debug', (req, res) => {
-  const url = process.env.SUPABASE_URL || '';
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  res.status(200).json({
-    url_length: url.length,
-    url_preview: url.slice(0, 40),
-    key_length: key.length,
-    key_starts_with: key.slice(0, 20),
-    key_ends_with: key.slice(-20),
-    key_has_newline: key.includes('\n'),
-    key_has_space: key.includes(' '),
-  });
-});
+// app.get('/api/debug', (req, res) => {
+//   const url = process.env.SUPABASE_URL || '';
+//   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+//   res.status(200).json({
+//     url_length: url.length,
+//     url_preview: url.slice(0, 40),
+//     key_length: key.length,
+//     key_starts_with: key.slice(0, 20),
+//     key_ends_with: key.slice(-20),
+//     key_has_newline: key.includes('\n'),
+//     key_has_space: key.includes(' '),
+//   });
+// });
 
 // PENTING: cegah browser/proxy menyimpan cache dari response API
 app.use('/api', (req, res, next) => {
