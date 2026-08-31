@@ -113,18 +113,22 @@ const fetchCategories = async () => {
 const fetchAnalytics = async () => {
   if (!user.value) return;
   try {
-    const res = await fetch(`/api/analytics/summary?user_id=${user.value.id}`);
-    const data = await res.json();
-    if (res.ok) stats.value = data;
+    const res = await fetch(`/api/analytics/summary?user_id=${user.value.id}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Gagal ambil statistik (status ${res.status})`);
+    stats.value = await res.json();
   } catch (err) {
     console.error('Gagal mengambil ringkasan statistik', err);
   }
 };
 
+let todosRequestId = 0;
+
 const fetchTodos = async () => {
   if (!user.value) return;
   loading.value = true;
   currentPage.value = 1;
+
+  const thisRequestId = ++todosRequestId;
 
   try {
     const params = new URLSearchParams({
@@ -140,13 +144,15 @@ const fetchTodos = async () => {
     if (filterStatus.value === 'pending') params.append('is_completed', 'false');
     if (searchQuery.value.trim()) params.append('search', searchQuery.value.trim());
 
-    const res = await fetch(`${API_URL}?${params.toString()}`);
-    const data = await res.json();
-    if (res.ok) todos.value = data;
+    const res = await fetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
+    if (thisRequestId !== todosRequestId) return; // ada request lain yang lebih baru
+
+    if (!res.ok) throw new Error(`Gagal ambil todos (status ${res.status})`);
+    todos.value = await res.json();
   } catch (err) {
     console.error('Gagal mengambil data todos', err);
   } finally {
-    loading.value = false;
+    if (thisRequestId === todosRequestId) loading.value = false;
   }
 };
 
