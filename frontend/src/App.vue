@@ -14,11 +14,11 @@ const inputPriority = ref('medium');
 const inputCategoryId = ref('');
 
 // State Filter, Search, Sort & Tab
-const currentTab = ref('active');
+const currentTab = ref('active'); // 'active' | 'archived'
 const searchQuery = ref('');
 const filterCategoryId = ref('');
 const filterPriority = ref('');
-const filterStatus = ref('');
+const filterStatus = ref(''); // '' (semua) | 'completed' | 'pending'
 const sortBy = ref('created_at');
 const sortOrder = ref('desc');
 
@@ -33,14 +33,14 @@ const stats = ref({
 });
 
 // State Subtask Baru & Input Edit Todo
-const newSubtaskTitles = ref({});
+const newSubtaskTitles = ref({}); // { [todoId]: 'judul subtask' }
 const editingId = ref(null);
 const editingTitle = ref('');
 const editingDescription = ref('');
 
 // === State Autentikasi ===
 const user = ref(null);
-const authView = ref('login');
+const authView = ref('login'); // 'login' | 'register'
 const authEmail = ref('');
 const authPassword = ref('');
 const authError = ref('');
@@ -76,7 +76,6 @@ const handleSaveProfile = async () => {
   try {
     const res = await fetch(`${AUTH_URL}/profile`, {
       method: 'PUT',
-      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: user.value.id,
@@ -99,72 +98,26 @@ const handleSaveProfile = async () => {
   }
 };
 
-// ==========================================
-// RETRY WRAPPER — exponential backoff
-// ==========================================
-// Membungkus sebuah async function (yang bisa gagal karena cold start
-// di Vercel) dengan percobaan ulang otomatis. Jeda antar percobaan
-// makin lama: 500ms -> 1000ms -> 2000ms.
-const withRetry = async (fn, { attempts = 3, baseDelay = 500, label = 'request' } = {}) => {
-  let lastError = null;
-
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      console.warn(`[retry] ${label} gagal (percobaan ${attempt}/${attempts}):`, err.message);
-
-      if (attempt < attempts) {
-        const delay = baseDelay * Math.pow(2, attempt - 1); // 500, 1000, 2000...
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  console.error(`[retry] ${label} tetap gagal setelah ${attempts} percobaan`, lastError);
-  throw lastError;
-};
-
-// Pre-warm backend saat halaman dibuka, supaya waktu user klik
-// "Masuk" nanti, function Vercel kemungkinan besar sudah warm.
-const warmUpBackend = () => {
-  fetch('/api/health', { cache: 'no-store' }).catch(() => {
-    // sengaja diabaikan — ini cuma usaha "membangunkan" backend,
-    // kalau gagal pun tidak masalah, retry di bawah tetap jalan
-  });
-};
-
 // === API Fetch Data Todos, Kategori & Statistik ===
 const fetchCategories = async () => {
   if (!user.value) return;
   try {
-    await withRetry(
-      async () => {
-        const res = await fetch(`/api/categories?user_id=${user.value.id}`, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`Gagal ambil kategori (status ${res.status})`);
-        categories.value = await res.json();
-      },
-      { label: 'fetchCategories' }
-    );
+    const res = await fetch(`/api/categories?user_id=${user.value.id}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Gagal ambil kategori (status ${res.status})`);
+    categories.value = await res.json();
   } catch (err) {
-    console.error('Gagal mengambil kategori setelah beberapa percobaan', err);
+    console.error('Gagal mengambil kategori', err);
   }
 };
 
 const fetchAnalytics = async () => {
   if (!user.value) return;
   try {
-    await withRetry(
-      async () => {
-        const res = await fetch(`/api/analytics/summary?user_id=${user.value.id}`, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`Gagal ambil statistik (status ${res.status})`);
-        stats.value = await res.json();
-      },
-      { label: 'fetchAnalytics' }
-    );
+    const res = await fetch(`/api/analytics/summary?user_id=${user.value.id}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Gagal ambil statistik (status ${res.status})`);
+    stats.value = await res.json();
   } catch (err) {
-    console.error('Gagal mengambil ringkasan statistik setelah beberapa percobaan', err);
+    console.error('Gagal mengambil ringkasan statistik', err);
   }
 };
 
@@ -178,45 +131,29 @@ const fetchTodos = async () => {
   const thisRequestId = ++todosRequestId;
 
   try {
-    await withRetry(
-      async () => {
-        const params = new URLSearchParams({
-          user_id: user.value.id,
-          is_archived: currentTab.value === 'archived' ? 'true' : 'false',
-          sort_by: sortBy.value,
-          order: sortOrder.value,
-        });
+    const params = new URLSearchParams({
+      user_id: user.value.id,
+      is_archived: currentTab.value === 'archived' ? 'true' : 'false',
+      sort_by: sortBy.value,
+      order: sortOrder.value,
+    });
 
-        if (filterCategoryId.value) params.append('category_id', filterCategoryId.value);
-        if (filterPriority.value) params.append('priority', filterPriority.value);
-        if (filterStatus.value === 'completed') params.append('is_completed', 'true');
-        if (filterStatus.value === 'pending') params.append('is_completed', 'false');
-        if (searchQuery.value.trim()) params.append('search', searchQuery.value.trim());
+    if (filterCategoryId.value) params.append('category_id', filterCategoryId.value);
+    if (filterPriority.value) params.append('priority', filterPriority.value);
+    if (filterStatus.value === 'completed') params.append('is_completed', 'true');
+    if (filterStatus.value === 'pending') params.append('is_completed', 'false');
+    if (searchQuery.value.trim()) params.append('search', searchQuery.value.trim());
 
-        const res = await fetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
-        if (thisRequestId !== todosRequestId) return; // ada request lain yang lebih baru, batalkan
+    const res = await fetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
+    if (thisRequestId !== todosRequestId) return; // ada request lain yang lebih baru
 
-        if (!res.ok) throw new Error(`Gagal ambil todos (status ${res.status})`);
-        const data = await res.json();
-
-        if (thisRequestId === todosRequestId) todos.value = data;
-      },
-      { label: 'fetchTodos' }
-    );
+    if (!res.ok) throw new Error(`Gagal ambil todos (status ${res.status})`);
+    todos.value = await res.json();
   } catch (err) {
-    console.error('Gagal mengambil data todos setelah beberapa percobaan', err);
+    console.error('Gagal mengambil data todos', err);
   } finally {
     if (thisRequestId === todosRequestId) loading.value = false;
   }
-};
-
-// --- Debounce untuk input pencarian ---
-let searchDebounceTimer = null;
-const debouncedFetchTodos = () => {
-  clearTimeout(searchDebounceTimer);
-  searchDebounceTimer = setTimeout(() => {
-    fetchTodos();
-  }, 400);
 };
 
 // Watcher untuk re-fetch otomatis saat filter/tab berubah
@@ -231,7 +168,6 @@ const handleRegister = async () => {
   try {
     const res = await fetch(`${AUTH_URL}/register`, {
       method: 'POST',
-      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: authEmail.value, password: authPassword.value }),
     });
@@ -252,24 +188,15 @@ const handleLogin = async () => {
   authError.value = '';
   authLoading.value = true;
   try {
-    const res = await withRetry(
-      async () => {
-        const r = await fetch(`${AUTH_URL}/login`, {
-          method: 'POST',
-          cache: 'no-store',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: authEmail.value, password: authPassword.value }),
-        });
-        if (!r.ok) {
-          const d = await r.json().catch(() => ({}));
-          throw new Error(d.error || `Login gagal (status ${r.status})`);
-        }
-        return r;
-      },
-      { label: 'handleLogin', attempts: 2 } // login cukup 2x — kalau email/password salah, jangan retry berkali-kali
-    );
-
+    const res = await fetch(`${AUTH_URL}/login`, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: authEmail.value, password: authPassword.value }),
+    });
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login gagal');
+
     user.value = data.user;
     localStorage.setItem('todo_user', JSON.stringify(user.value));
     setProfileData(data.user);
@@ -277,19 +204,33 @@ const handleLogin = async () => {
     authEmail.value = '';
     authPassword.value = '';
 
-    // Ketiganya sekarang sudah punya retry masing-masing di dalamnya,
-    // jadi aman dijalankan paralel — tidak perlu berurutan lagi.
-    await Promise.all([fetchCategories(), fetchTodos(), fetchAnalytics()]);
+    // Jalankan berurutan (bukan Promise.all) supaya kalau ada request
+    // yang gagal karena backend masih "cold", masih tersisa retry di sini,
+    // dan tidak semuanya ambruk bersamaan pada percobaan pertama.
+    await fetchCategories();
+    await fetchTodosWithRetry();
+    await fetchAnalytics();
   } catch (err) {
-    authError.value = err.message || 'Login gagal, coba lagi.';
+    authError.value = err.message;
   } finally {
     authLoading.value = false;
   }
 };
 
+// Retry sekali kalau percobaan pertama gagal — menutupi cold start
+const fetchTodosWithRetry = async () => {
+  await fetchTodos();
+  if (todos.value.length === 0) {
+    // beri jeda singkat lalu coba sekali lagi, siapa tahu request pertama
+    // gagal karena backend baru saja "bangun" dari cold start
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await fetchTodos();
+  }
+};
+
 const handleLogout = async () => {
   try {
-    await fetch(`${AUTH_URL}/logout`, { method: 'POST', cache: 'no-store' });
+    await fetch(`${AUTH_URL}/logout`, { method: 'POST' });
   } catch (err) {
     console.error('Gagal logout di server', err);
   } finally {
@@ -319,7 +260,6 @@ const handleSubmit = async () => {
 
     const res = await fetch(API_URL, {
       method: 'POST',
-      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
@@ -342,7 +282,6 @@ const toggleComplete = async (todo) => {
   try {
     const res = await fetch(`${API_URL}/${todo.id}`, {
       method: 'PUT',
-      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_completed: !todo.is_completed, user_id: user.value.id }),
     });
@@ -360,7 +299,6 @@ const toggleArchive = async (todo) => {
   try {
     const res = await fetch(`${API_URL}/${todo.id}`, {
       method: 'PUT',
-      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_archived: !todo.is_archived, user_id: user.value.id }),
     });
@@ -392,7 +330,6 @@ const handleUpdateTodo = async (id) => {
   try {
     const res = await fetch(`${API_URL}/${id}`, {
       method: 'PUT',
-      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: editingTitle.value.trim(),
@@ -415,7 +352,6 @@ const handleDelete = async (id) => {
   try {
     const res = await fetch(`${API_URL}/${id}?user_id=${user.value.id}`, {
       method: 'DELETE',
-      cache: 'no-store',
     });
 
     if (res.ok) {
@@ -435,7 +371,6 @@ const handleAddSubtask = async (todoId) => {
   try {
     const res = await fetch(`/api/todos/${todoId}/subtasks`, {
       method: 'POST',
-      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
     });
@@ -453,7 +388,6 @@ const toggleSubtask = async (subtask) => {
   try {
     const res = await fetch(`/api/subtasks/${subtask.id}`, {
       method: 'PUT',
-      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_completed: !subtask.is_completed }),
     });
@@ -468,7 +402,6 @@ const deleteSubtask = async (subtaskId) => {
   try {
     const res = await fetch(`/api/subtasks/${subtaskId}`, {
       method: 'DELETE',
-      cache: 'no-store',
     });
 
     if (res.ok) fetchTodos();
@@ -487,7 +420,6 @@ const handleAttachmentUpload = async (event, todoId) => {
     try {
       const res = await fetch(`/api/todos/${todoId}/attachments`, {
         method: 'POST',
-        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user.value.id,
@@ -516,8 +448,8 @@ const getDueDateStatus = (dueDateStr, isCompleted) => {
   const now = new Date();
   const diffHours = (dueDate - now) / (1000 * 60 * 60);
 
-  if (diffHours < 0) return 'overdue';
-  if (diffHours <= 24) return 'due-soon';
+  if (diffHours < 0) return 'overdue'; // Warna Merah
+  if (diffHours <= 24) return 'due-soon'; // Warna Kuning/Oranye
   return 'normal';
 };
 
@@ -583,7 +515,6 @@ onMounted(() => {
     fetchAnalytics();
   } else {
     loading.value = false;
-    warmUpBackend(); // user belum login → pre-warm backend sambil dia isi form
   }
 });
 </script>
