@@ -216,20 +216,19 @@ const handleLogin = async () => {
     authEmail.value = '';
     authPassword.value = '';
 
-    // Tunggu SEMUA data awal selesai dulu (todos, kategori, statistik).
-    // Baru setelah itu dashboard ditampilkan — jadi begitu render,
-    // datanya sudah lengkap dan tidak perlu refresh manual.
     await Promise.all([
       fetchCategories(),
       fetchTodosWithRetry(),
       fetchAnalytics(),
     ]);
-
-    dashboardReady.value = true;
   } catch (err) {
     authError.value = err.message;
+    // login gagal -> jangan tampilkan dashboard, balik ke form
+    user.value = null;
+    localStorage.removeItem('todo_user');
   } finally {
     authLoading.value = false;
+    dashboardReady.value = true; // selalu di-set, biar tidak stuck
   }
 };
 
@@ -525,20 +524,25 @@ const visiblePageNumbers = computed(() => {
 onMounted(async () => {
   const saved = localStorage.getItem('todo_user');
   if (saved) {
-    user.value = JSON.parse(saved);
-    setProfileData(user.value);
+    try {
+      user.value = JSON.parse(saved);
+      setProfileData(user.value);
 
-    // Sama seperti login: tunggu semua data awal siap sebelum dashboard
-    // ditampilkan, supaya reload halaman juga langsung terisi penuh.
-    await Promise.all([
-      fetchCategories(),
-      fetchTodos(),
-      fetchAnalytics(),
-    ]);
-    dashboardReady.value = true;
+      await Promise.all([
+        fetchCategories(),
+        fetchTodos(),
+        fetchAnalytics(),
+      ]);
+    } catch (err) {
+      console.error('Gagal memuat data awal', err);
+      authError.value = 'Gagal memuat data. Coba refresh halaman.';
+    } finally {
+      dashboardReady.value = true; // selalu jalan, apapun hasilnya
+      loading.value = false;
+    }
   } else {
     loading.value = false;
-    dashboardReady.value = true; // tidak ada user tersimpan -> langsung tampilkan form login
+    dashboardReady.value = true;
   }
 });
 </script>
