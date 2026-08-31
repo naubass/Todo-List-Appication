@@ -303,7 +303,7 @@ onMounted(() => {
         <nav class="nav-links">
           <button v-if="user" class="nav-link" @click="scrollToId('board')">Papan Tugas</button>
           <button v-if="user" class="nav-link" @click="scrollToId('profile')">Profil</button>
-        </nav>
+        </nav> 
 
         <div class="navbar-cta">
           <span v-if="user" class="navbar-user">🐾 {{ displayName || user.email }}</span>
